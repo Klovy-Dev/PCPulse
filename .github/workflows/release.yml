@@ -36,7 +36,7 @@ jobs:
           VITE_TURSO_TOKEN: ${{ secrets.VITE_TURSO_TOKEN }}
         run: npm run tauri build
 
-      # Renommer les artefacts + signer si besoin
+      # Renommer l'exe + créer le zip Stored + signer
       - name: Prepare release artifacts
         shell: pwsh
         env:
@@ -56,37 +56,27 @@ jobs:
           Rename-Item $exe.FullName -NewName $newExeName
           Write-Host "EXE -> $newExeName"
 
-          # -- ZIP + SIG : tauri build signe automatiquement si la clé est présente --
-          $existingSig = Get-ChildItem $nsisDir -Filter "*.nsis.zip.sig" | Select-Object -First 1
-
+          # -- ZIP : toujours recréer avec méthode Stored (0) --
+          # La doc Tauri impose Stored pour les updates NSIS (Deflate/Deflate64 non supportés)
           $newZipName = "NexBoost-$version-setup.nsis.zip"
           $newZipPath = Join-Path $nsisDir $newZipName
 
-          if ($existingSig) {
-            Write-Host "Auto-signé par tauri build — renommage"
-            $existingZip = Get-ChildItem $nsisDir -Filter "*.nsis.zip" |
-                             Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipArchive = [System.IO.Compression.ZipFile]::Open(
+            $newZipPath, [System.IO.Compression.ZipArchiveMode]::Create
+          )
+          [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $zipArchive, $newExePath, $newExeName,
+            [System.IO.Compression.CompressionLevel]::NoCompression
+          )
+          $zipArchive.Dispose()
+          Write-Host "ZIP cree (Stored) : $newZipName"
 
-            Rename-Item $existingZip.FullName -NewName $newZipName
-            Rename-Item $existingSig.FullName -NewName "$newZipName.sig"
-          } else {
-            Write-Host "Signature manuelle..."
-            # Compress-Archive utilise Deflate64 (méthode 9) non supporté par Tauri.
-            # On utilise System.IO.Compression qui produit du Deflate standard (méthode 8).
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            $zipArchive = [System.IO.Compression.ZipFile]::Open($newZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-              $zipArchive, $newExePath, $newExeName,
-              [System.IO.Compression.CompressionLevel]::Optimal
-            )
-            $zipArchive.Dispose()
-            Write-Host "ZIP cree : $newZipName"
-
-            npm run tauri -- signer sign -k $env:TAURI_SIGNING_PRIVATE_KEY $newZipPath
-            if ($LASTEXITCODE -ne 0) { throw "Signature echouee (exit $LASTEXITCODE)" }
-            if (-not (Test-Path "$newZipPath.sig")) { throw ".sig introuvable apres signature" }
-            Write-Host "Signature OK"
-          }
+          # -- SIGNATURE --
+          npm run tauri -- signer sign -k $env:TAURI_SIGNING_PRIVATE_KEY $newZipPath
+          if ($LASTEXITCODE -ne 0) { throw "Signature echouee (exit $LASTEXITCODE)" }
+          if (-not (Test-Path "$newZipPath.sig")) { throw ".sig introuvable apres signature" }
+          Write-Host "Signature OK"
 
           Write-Host "=== Artefacts finaux ==="
           Get-ChildItem $nsisDir | ForEach-Object { Write-Host "  $($_.Name)" }
