@@ -52,24 +52,46 @@ jobs:
           prerelease: false
           includeUpdaterJson: false
 
+      - name: Lister les fichiers bundle (debug)
+        shell: pwsh
+        run: |
+          Write-Host "=== Contenu du dossier bundle ==="
+          Get-ChildItem -Recurse "src-tauri/target/release/bundle/" | Select-Object -ExpandProperty FullName
+
       - name: Générer et uploader latest.json
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = "${{ github.ref_name }}" -replace '^v', ''
-          $tag     = "${{ github.ref_name }}"
+          $tag = "${{ github.ref_name }}"
+          $version = $tag -replace '^v', ''
 
-          $nsisZip    = "src-tauri/target/release/bundle/nsis/NexBoost_${version}_x64-setup.nsis.zip"
-          $nsisZipSig = "src-tauri/target/release/bundle/nsis/NexBoost_${version}_x64-setup.nsis.zip.sig"
+          # Chercher dynamiquement le .nsis.zip.sig
+          $nsisZipSigFile = Get-ChildItem -Recurse "src-tauri/target/release/bundle/" -Filter "*.nsis.zip.sig" | Select-Object -First 1
+          $nsisZipFile    = Get-ChildItem -Recurse "src-tauri/target/release/bundle/" -Filter "*.nsis.zip" |
+                              Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
 
-          # Upload le .nsis.zip (nécessaire pour la mise à jour in-app)
-          gh release upload $tag $nsisZip --clobber
+          if (-not $nsisZipSigFile) {
+            # Fallback : utiliser le .exe.sig si pas de .nsis.zip.sig
+            Write-Host "Pas de .nsis.zip.sig trouvé, fallback sur .exe.sig"
+            $exeSigFile  = Get-ChildItem -Recurse "src-tauri/target/release/bundle/" -Filter "*-setup.exe.sig" | Select-Object -First 1
+            $exeFile     = Get-ChildItem -Recurse "src-tauri/target/release/bundle/" -Filter "*-setup.exe" |
+                             Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
+            $signature   = (Get-Content $exeSigFile.FullName -Raw).Trim()
+            $uploadFile  = $exeFile.FullName
+            $assetName   = $exeFile.Name
+          } else {
+            Write-Host "Trouvé : $($nsisZipSigFile.FullName)"
+            $signature  = (Get-Content $nsisZipSigFile.FullName -Raw).Trim()
+            $uploadFile = $nsisZipFile.FullName
+            $assetName  = $nsisZipFile.Name
+          }
 
-          # Lire la signature
-          $signature  = (Get-Content $nsisZipSig -Raw).Trim()
-          $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/NexBoost_${version}_x64-setup.nsis.zip"
-          $pubDate    = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ")
+          # Upload le fichier de mise à jour
+          gh release upload $tag $uploadFile --clobber
+
+          $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/$assetName"
+          $pubDate     = (Get-Date -AsUTC -Format "yyyy-MM-ddTHH:mm:ssZ")
 
           # Construire latest.json
           $payload = [ordered]@{
@@ -84,7 +106,8 @@ jobs:
             }
           }
           $payload | ConvertTo-Json -Depth 10 | Out-File "latest.json" -Encoding UTF8NoBOM
+          Write-Host "=== latest.json ==="
+          Get-Content "latest.json"
 
-          # Upload latest.json
           gh release upload $tag "latest.json" --clobber
           Write-Host "latest.json uploadé avec succès !"
