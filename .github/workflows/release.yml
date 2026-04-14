@@ -28,54 +28,43 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Décoder le secret base64 → fichier .key sur disque
-      - name: Decode signing key
-        shell: pwsh
-        env:
-          KEY_B64: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-        run: |
-          # Écrire la chaîne base64 directement dans le fichier
-          # tauri signer sign -f attend du base64 dans le fichier, pas le texte brut
-          $keyPath   = "$env:RUNNER_TEMP\nexboost.key"
-          $keyBase64 = $env:KEY_B64.Trim()
-          [IO.File]::WriteAllText($keyPath, $keyBase64)
-          "SIGNING_KEY_PATH=$keyPath"              | Out-File -FilePath $env:GITHUB_ENV -Append
-          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="    | Out-File -FilePath $env:GITHUB_ENV -Append
-          Write-Host "Cle : $keyPath"
-
-      # Build normal — pas de signing pendant le build (c'est volontaire)
+      # tauri build signe automatiquement quand TAURI_SIGNING_PRIVATE_KEY est présent
       - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
 
-      # On crée le .nsis.zip nous-mêmes puis on le signe
-      - name: Package NSIS installer and sign
+      # Si tauri build n'a pas signé (fallback) : créer le zip et signer manuellement
+      - name: Sign NSIS bundle if not already signed
         shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $nsisDir = "src-tauri/target/release/bundle/nsis"
 
-          $exe = Get-ChildItem $nsisDir -Filter "*_x64-setup.exe" | Select-Object -First 1
-          if (-not $exe) { throw "setup.exe introuvable dans $nsisDir" }
-          Write-Host "EXE : $($exe.FullName)"
+          $existing = Get-ChildItem $nsisDir -Filter "*.nsis.zip.sig" | Select-Object -First 1
+          if ($existing) {
+            Write-Host "Deja signe par tauri build : $($existing.Name)"
+            exit 0
+          }
 
-          # Créer le zip (même nom que Tauri produirait)
-          $zipName = $exe.BaseName + ".nsis.zip"
-          $zipPath = Join-Path $nsisDir $zipName
+          Write-Host "Signature manuelle..."
+          $exe = Get-ChildItem $nsisDir -Filter "*_x64-setup.exe" | Select-Object -First 1
+          if (-not $exe) { throw "setup.exe introuvable" }
+
+          $zipPath = Join-Path $nsisDir ($exe.BaseName + ".nsis.zip")
           Compress-Archive -Path $exe.FullName -DestinationPath $zipPath -Force
           Write-Host "ZIP : $zipPath"
 
-          # Signer le zip avec la clé
-          # -f = chemin fichier clé
-          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" est lu automatiquement par la CLI
-          npm run tauri -- signer sign -f $env:SIGNING_KEY_PATH $zipPath
+          # -k = clé en base64 (valeur directe du secret, sans passer par un fichier)
+          npm run tauri -- signer sign -k $env:TAURI_SIGNING_PRIVATE_KEY $zipPath
           if ($LASTEXITCODE -ne 0) { throw "Signature echouee (exit $LASTEXITCODE)" }
 
-          $sigPath = "$zipPath.sig"
-          if (-not (Test-Path $sigPath)) { throw ".sig introuvable apres signature" }
-          Write-Host "Signature OK : $sigPath"
-          Write-Host "Contenu .sig :"
-          Get-Content $sigPath
+          if (-not (Test-Path "$zipPath.sig")) { throw ".sig introuvable" }
+          Write-Host "Signature OK"
 
-      # Créer la release GitHub et uploader les fichiers
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -89,6 +78,10 @@ jobs:
           $nsisZip = Get-ChildItem $nsisDir -Filter "*.nsis.zip" |
                        Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
           $sigFile = Get-ChildItem $nsisDir -Filter "*.nsis.zip.sig" | Select-Object -First 1
+
+          if (-not $exe)     { throw "setup.exe introuvable" }
+          if (-not $nsisZip) { throw ".nsis.zip introuvable" }
+          if (-not $sigFile) { throw ".nsis.zip.sig introuvable" }
 
           $signature   = (Get-Content $sigFile.FullName -Raw).Trim()
           $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/$($nsisZip.Name)"
@@ -106,8 +99,7 @@ jobs:
             }
           } | ConvertTo-Json -Depth 10 | Out-File "latest.json" -Encoding UTF8NoBOM
 
-          Write-Host "=== latest.json ==="
-          Get-Content "latest.json"
+          Write-Host "=== latest.json ===" ; Get-Content "latest.json"
 
           gh release create $tag `
             --title "NexBoost $tag" `
