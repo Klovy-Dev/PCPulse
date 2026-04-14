@@ -37,7 +37,8 @@ jobs:
           $keyPath  = "$env:RUNNER_TEMP\nexboost.key"
           $keyBytes = [Convert]::FromBase64String($env:KEY_B64.Trim())
           [IO.File]::WriteAllBytes($keyPath, $keyBytes)
-          "SIGNING_KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SIGNING_KEY_PATH=$keyPath"              | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="    | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "Cle : $keyPath ($($keyBytes.Length) octets)"
 
       # Build normal — pas de signing pendant le build (c'est volontaire)
@@ -61,8 +62,9 @@ jobs:
           Write-Host "ZIP : $zipPath"
 
           # Signer le zip avec la clé
-          # -f = chemin fichier clé, -W = pas de mot de passe
-          npm run tauri -- signer sign -f $env:SIGNING_KEY_PATH -W $zipPath
+          # -f = chemin fichier clé
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD="" est lu automatiquement par la CLI
+          npm run tauri -- signer sign -f $env:SIGNING_KEY_PATH $zipPath
           if ($LASTEXITCODE -ne 0) { throw "Signature echouee (exit $LASTEXITCODE)" }
 
           $sigPath = "$zipPath.sig"
