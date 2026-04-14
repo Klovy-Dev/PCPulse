@@ -28,8 +28,7 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # Écrire la clé dans un fichier et passer son CHEMIN à Tauri
-      # C'est la méthode la plus fiable : Tauri lit le fichier directement
+      # Décoder le secret base64 → fichier .key sur disque
       - name: Decode signing key
         shell: pwsh
         env:
@@ -38,14 +37,41 @@ jobs:
           $keyPath  = "$env:RUNNER_TEMP\nexboost.key"
           $keyBytes = [Convert]::FromBase64String($env:KEY_B64.Trim())
           [IO.File]::WriteAllBytes($keyPath, $keyBytes)
-          Write-Host "Cle ecrite : $keyPath ($($keyBytes.Length) octets)"
-          "TAURI_SIGNING_PRIVATE_KEY=$keyPath"   | Out-File -FilePath $env:GITHUB_ENV -Append
-          "TAURI_SIGNING_PRIVATE_KEY_PASSWORD="  | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SIGNING_KEY_PATH=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Cle : $keyPath ($($keyBytes.Length) octets)"
 
+      # Build normal — pas de signing pendant le build (c'est volontaire)
       - name: Build Tauri app
-        shell: pwsh
         run: npm run tauri build
 
+      # On crée le .nsis.zip nous-mêmes puis on le signe
+      - name: Package NSIS installer and sign
+        shell: pwsh
+        run: |
+          $nsisDir = "src-tauri/target/release/bundle/nsis"
+
+          $exe = Get-ChildItem $nsisDir -Filter "*_x64-setup.exe" | Select-Object -First 1
+          if (-not $exe) { throw "setup.exe introuvable dans $nsisDir" }
+          Write-Host "EXE : $($exe.FullName)"
+
+          # Créer le zip (même nom que Tauri produirait)
+          $zipName = $exe.BaseName + ".nsis.zip"
+          $zipPath = Join-Path $nsisDir $zipName
+          Compress-Archive -Path $exe.FullName -DestinationPath $zipPath -Force
+          Write-Host "ZIP : $zipPath"
+
+          # Signer le zip avec la clé
+          # -f = chemin fichier clé, -W = pas de mot de passe
+          npm run tauri -- signer sign -f $env:SIGNING_KEY_PATH -W $zipPath
+          if ($LASTEXITCODE -ne 0) { throw "Signature echouee (exit $LASTEXITCODE)" }
+
+          $sigPath = "$zipPath.sig"
+          if (-not (Test-Path $sigPath)) { throw ".sig introuvable apres signature" }
+          Write-Host "Signature OK : $sigPath"
+          Write-Host "Contenu .sig :"
+          Get-Content $sigPath
+
+      # Créer la release GitHub et uploader les fichiers
       - name: Create GitHub release
         shell: pwsh
         env:
@@ -53,21 +79,12 @@ jobs:
         run: |
           $tag     = "${{ github.ref_name }}"
           $version = $tag -replace '^v', ''
+          $nsisDir = "src-tauri/target/release/bundle/nsis"
 
-          Write-Host "=== Contenu bundle ==="
-          Get-ChildItem -Recurse "src-tauri/target/release/bundle" | ForEach-Object { $_.FullName }
-
-          $exe     = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" `
-                       -Filter "*_x64-setup.exe" | Select-Object -First 1
-          $nsisZip = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" `
-                       -Filter "*.nsis.zip" |
+          $exe     = Get-ChildItem $nsisDir -Filter "*_x64-setup.exe" | Select-Object -First 1
+          $nsisZip = Get-ChildItem $nsisDir -Filter "*.nsis.zip" |
                        Where-Object { $_.Name -notlike "*.sig" } | Select-Object -First 1
-          $sigFile = Get-ChildItem -Recurse "src-tauri/target/release/bundle/nsis" `
-                       -Filter "*.nsis.zip.sig" | Select-Object -First 1
-
-          if (-not $exe)     { throw "setup.exe introuvable" }
-          if (-not $nsisZip) { throw ".nsis.zip introuvable — la signature a-t-elle fonctionne ?" }
-          if (-not $sigFile) { throw ".nsis.zip.sig introuvable" }
+          $sigFile = Get-ChildItem $nsisDir -Filter "*.nsis.zip.sig" | Select-Object -First 1
 
           $signature   = (Get-Content $sigFile.FullName -Raw).Trim()
           $downloadUrl = "https://github.com/Klovy-Dev/nexboost/releases/download/$tag/$($nsisZip.Name)"
@@ -95,4 +112,4 @@ jobs:
             $nsisZip.FullName `
             "latest.json"
 
-          Write-Host "Release creee avec succes !"
+          Write-Host "Release creee !"
