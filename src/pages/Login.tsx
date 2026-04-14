@@ -87,26 +87,23 @@ export default function Login({ onLogin }: Props) {
             </div>
           </div>
 
-          {/* Témoignage */}
+          {/* Avis */}
           <div style={{
-            padding: "12px 14px", borderRadius: 10,
+            padding: "14px 16px", borderRadius: 10,
             background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
           }}>
-            <div style={{ display: "flex", gap: 2, marginBottom: 6 }}>
-              {[0,1,2,3,4].map(i => <span key={i} style={{ color: "#fbbf24", fontSize: 10 }}>★</span>)}
-            </div>
-            <p style={{ fontSize: 10, color: "#94a3b8", lineHeight: 1.5, margin: "0 0 8px" }}>
-              "Mon jeu tourne maintenant à 110 FPS stables au lieu de 85. NexBoost a tout changé."
+            <span style={{
+              fontSize: 9, fontWeight: 800, letterSpacing: "0.15em",
+              padding: "3px 10px", borderRadius: 5,
+              background: "rgba(56,189,248,0.08)", border: "1px solid rgba(56,189,248,0.18)",
+              color: "#38bdf8",
+            }}>
+              SOON
+            </span>
+            <p style={{ fontSize: 10, color: "#374151", margin: 0, textAlign: "center", lineHeight: 1.5 }}>
+              Les avis utilisateurs arrivent bientôt
             </p>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: "50%",
-                background: "rgba(56,189,248,0.15)", color: "#38bdf8",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 9, fontWeight: 700,
-              }}>K</div>
-              <span style={{ fontSize: 10, color: "#4b5563" }}>Karthos_GG</span>
-            </div>
           </div>
         </div>
 

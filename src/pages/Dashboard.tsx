@@ -61,6 +61,8 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
   const [updateVersion,  setUpdateVersion]  = useState<string | null>(null);
   const [installing,     setInstalling]     = useState(false);
   const [updateError,    setUpdateError]    = useState<string | null>(null);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const tempNotifSentAt = useRef<number>(0);
 
   // ── Vérification mise à jour (après 15s pour ne pas ralentir le démarrage) ──
@@ -70,6 +72,7 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
         const update = await checkUpdate();
         if (update?.available) {
           setUpdateVersion(update.version);
+          setShowUpdateModal(true);
           notify("🔄 Mise à jour disponible", `NexBoost v${update.version} est prêt à installer !`);
         }
       } catch {}
@@ -119,11 +122,15 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
     try { return { temp: 85, cpu: 90, ram: 90, ...JSON.parse(localStorage.getItem("nexboost_thresholds") || "{}") }; }
     catch { return { temp: 85, cpu: 90, ram: 90 }; }
   })();
-  const tempAlert  = stats.temp > thresholds.temp && stats.temp > 0;
+  const tempAlert = stats.temp > thresholds.temp && stats.temp > 0;
+  const ramAlert  = stats.ram_total_gb > 0 && (stats.ram_used_gb / stats.ram_total_gb) * 100 > thresholds.ram;
   const perfScore  = Math.max(0, Math.min(100, Math.floor(100 - (stats.cpu + stats.ram) / 4)));
   const activeCount = Object.values(tweakStates).filter(Boolean).length;
 
-  /* Alerte température → notification OS (max 1 fois / 5 min) */
+  const cpuNotifSentAt  = useRef<number>(0);
+  const ramNotifSentAt  = useRef<number>(0);
+
+  /* Alerte température */
   useEffect(() => {
     if (stats.temp > 0 && stats.temp > thresholds.temp) {
       const now = Date.now();
@@ -133,6 +140,29 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
       }
     }
   }, [stats.temp, thresholds.temp]);
+
+  /* Alerte CPU */
+  useEffect(() => {
+    if (stats.cpu > thresholds.cpu) {
+      const now = Date.now();
+      if (now - cpuNotifSentAt.current > 5 * 60 * 1000) {
+        cpuNotifSentAt.current = now;
+        notify("⚠️ Charge CPU élevée", `CPU à ${stats.cpu}% — seuil de ${thresholds.cpu}% dépassé.`);
+      }
+    }
+  }, [stats.cpu, thresholds.cpu]);
+
+  /* Alerte RAM */
+  useEffect(() => {
+    if (ramAlert) {
+      const now = Date.now();
+      if (now - ramNotifSentAt.current > 5 * 60 * 1000) {
+        ramNotifSentAt.current = now;
+        const pct = Math.round((stats.ram_used_gb / stats.ram_total_gb) * 100);
+        notify("⚠️ Utilisation RAM élevée", `RAM à ${pct}% (${stats.ram_used_gb}/${stats.ram_total_gb} GB) — seuil de ${thresholds.ram}% dépassé.`);
+      }
+    }
+  }, [ramAlert, thresholds.ram]);
 
   /* GPU polling */
   useEffect(() => {
@@ -197,27 +227,43 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
     <div className="fixed inset-0 select-none animate-fadeIn" style={BG}>
       <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
 
-        {/* ── Sidebar icon-only ── */}
+        {/* ── Sidebar ── */}
         <aside
           onMouseDown={handleDragStart}
+          onMouseEnter={() => setSidebarExpanded(true)}
+          onMouseLeave={() => setSidebarExpanded(false)}
           style={{
-            width: 52,
+            width: sidebarExpanded ? 160 : 52,
             background: "#09091a",
             borderRight: "1px solid rgba(255,255,255,0.05)",
             display: "flex",
             flexDirection: "column",
-            alignItems: "center",
+            alignItems: sidebarExpanded ? "flex-start" : "center",
             padding: "12px 0 10px",
             flexShrink: 0,
             userSelect: "none",
+            overflow: "hidden",
+            transition: "width 0.2s ease",
           }}
         >
           {/* Logo NexBoost */}
-          <img
-            src={nexboostLogo}
-            alt="NexBoost"
-            style={{ width: 30, height: 30, borderRadius: 7, marginBottom: 14, flexShrink: 0 }}
-          />
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: sidebarExpanded ? "0 12px" : "0",
+            justifyContent: sidebarExpanded ? "flex-start" : "center",
+            marginBottom: 14, width: "100%", overflow: "hidden",
+          }}>
+            <img
+              src={nexboostLogo}
+              alt="NexBoost"
+              style={{ width: 30, height: 30, borderRadius: 7, flexShrink: 0 }}
+            />
+            {sidebarExpanded && (
+              <span style={{ fontSize: 11, fontFamily: "'Orbitron', monospace", fontWeight: 700, color: "#f1f5f9", letterSpacing: "0.08em", whiteSpace: "nowrap", overflow: "hidden" }}>
+                NEXBOOST
+              </span>
+            )}
+          </div>
 
           {/* Navigation */}
           <nav style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%", padding: "0 8px" }}>
@@ -225,17 +271,22 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
               <button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                title={label}
+                title={sidebarExpanded ? undefined : label}
                 style={{
                   position: "relative",
                   width: "100%", height: 36, borderRadius: 7,
-                  display: "flex", alignItems: "center", justifyContent: "center",
+                  display: "flex", alignItems: "center",
+                  justifyContent: sidebarExpanded ? "flex-start" : "center",
+                  gap: 8,
+                  padding: sidebarExpanded ? "0 10px" : "0",
                   background: activeTab === id ? "rgba(56,189,248,0.12)" : "transparent",
                   border: activeTab === id ? "1px solid rgba(56,189,248,0.22)" : "1px solid transparent",
                   color: activeTab === id ? "#38bdf8" : "#4b5563",
                   cursor: "pointer",
                   transition: "all 0.15s",
                   flexShrink: 0,
+                  overflow: "hidden",
+                  whiteSpace: "nowrap",
                 }}
                 onMouseEnter={e => {
                   if (activeTab !== id) {
@@ -250,7 +301,10 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
                   }
                 }}
               >
-                {icon}
+                <span style={{ flexShrink: 0, display: "flex" }}>{icon}</span>
+                {sidebarExpanded && (
+                  <span style={{ fontSize: 12, fontWeight: 500 }}>{label}</span>
+                )}
                 {id === "dashboard" && tempAlert && (
                   <span
                     style={{
@@ -266,63 +320,95 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
 
           <div style={{ flex: 1 }} />
 
-          {/* Avatar utilisateur (affichage seul) */}
+          {/* Avatar utilisateur */}
           <div
             title={user.username}
             style={{
-              width: 28, height: 28, borderRadius: "50%", marginBottom: 6,
+              height: 28, marginBottom: 6,
+              display: "flex", alignItems: "center", gap: 8,
+              padding: sidebarExpanded ? "0 12px" : "0",
+              justifyContent: sidebarExpanded ? "flex-start" : "center",
+              width: "100%", overflow: "hidden",
+            }}
+          >
+            <div style={{
+              width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, fontWeight: 700, flexShrink: 0,
+              fontSize: 11, fontWeight: 700,
               background: user.premium ? "rgba(168,85,247,0.2)" : "rgba(56,189,248,0.15)",
               border: `1px solid ${user.premium ? "rgba(168,85,247,0.4)" : "rgba(56,189,248,0.3)"}`,
               color: user.premium ? "#c084fc" : "#38bdf8",
-            }}
-          >
-            {user.premium ? <Crown size={11} /> : user.username.charAt(0).toUpperCase()}
+            }}>
+              {user.premium ? <Crown size={11} /> : user.username.charAt(0).toUpperCase()}
+            </div>
+            {sidebarExpanded && (
+              <span style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user.username}
+              </span>
+            )}
           </div>
 
           {/* Indicateur admin */}
           {isAdmin !== null && (
             <div
-              title={isAdmin ? "Administrateur — tous les tweaks disponibles" : "Mode limité — cliquer pour relancer en admin"}
+              title={isAdmin ? "Administrateur" : "Mode limité — cliquer pour relancer en admin"}
               onClick={isAdmin ? undefined : handleRelaunchAdmin}
               style={{
-                width: 28, height: 28, borderRadius: 7, marginBottom: 4,
-                display: "flex", alignItems: "center", justifyContent: "center",
+                height: 28, marginBottom: 4, width: "100%",
+                display: "flex", alignItems: "center", gap: 8,
+                padding: sidebarExpanded ? "0 12px" : "0",
+                justifyContent: sidebarExpanded ? "flex-start" : "center",
                 flexShrink: 0, cursor: isAdmin ? "default" : "pointer",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{
+                width: 28, height: 28, borderRadius: 7, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
                 background: isAdmin ? "rgba(74,222,128,0.1)" : "rgba(251,191,36,0.1)",
                 border: `1px solid ${isAdmin ? "rgba(74,222,128,0.25)" : "rgba(251,191,36,0.3)"}`,
                 color: isAdmin ? "#4ade80" : "#fbbf24",
                 transition: "all 0.15s",
-              }}
-            >
-              {isAdmin ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+              }}>
+                {isAdmin ? <ShieldCheck size={12} /> : <ShieldAlert size={12} />}
+              </div>
+              {sidebarExpanded && (
+                <span style={{ fontSize: 11, color: isAdmin ? "#4ade80" : "#fbbf24", whiteSpace: "nowrap", overflow: "hidden" }}>
+                  {isAdmin ? "Admin" : "Mode limité"}
+                </span>
+              )}
             </div>
           )}
 
           {/* Bouton déconnexion */}
-          <button
-            onClick={onLogout}
-            title="Se déconnecter"
-            style={{
-              width: 32, height: 32, borderRadius: 7, marginBottom: 6,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              background: "transparent", border: "1px solid transparent",
-              color: "#374151", cursor: "pointer", transition: "all 0.15s", flexShrink: 0,
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = "rgba(248,113,113,0.1)";
-              e.currentTarget.style.borderColor = "rgba(248,113,113,0.25)";
-              e.currentTarget.style.color = "#f87171";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.borderColor = "transparent";
-              e.currentTarget.style.color = "#374151";
-            }}
-          >
-            <LogOut size={14} />
-          </button>
+          <div style={{ width: "100%", padding: "0 8px" }}>
+            <button
+              onClick={onLogout}
+              title="Se déconnecter"
+              style={{
+                width: "100%", height: 32, borderRadius: 7, marginBottom: 6,
+                display: "flex", alignItems: "center",
+                justifyContent: sidebarExpanded ? "flex-start" : "center",
+                gap: 8, padding: sidebarExpanded ? "0 10px" : "0",
+                background: "transparent", border: "1px solid transparent",
+                color: "#374151", cursor: "pointer", transition: "all 0.15s", flexShrink: 0,
+                overflow: "hidden", whiteSpace: "nowrap",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = "rgba(248,113,113,0.1)";
+                e.currentTarget.style.borderColor = "rgba(248,113,113,0.25)";
+                e.currentTarget.style.color = "#f87171";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = "transparent";
+                e.currentTarget.style.borderColor = "transparent";
+                e.currentTarget.style.color = "#374151";
+              }}
+            >
+              <span style={{ flexShrink: 0, display: "flex" }}><LogOut size={14} /></span>
+              {sidebarExpanded && <span style={{ fontSize: 12 }}>Déconnexion</span>}
+            </button>
+          </div>
         </aside>
 
         {/* ── Zone principale ── */}
@@ -370,44 +456,8 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
                     {relaunching ? "Relancement..." : "Relancer en admin"}
                   </button>
                 </>
-              ) : updateVersion ? (
-                /* ── Alerte mise à jour dans la titlebar ── */
-                <>
-                  <Download size={10} style={{ color: updateError ? "#f87171" : "#38bdf8", flexShrink: 0 }} />
-                  <span style={{ fontSize: 9, color: updateError ? "#f87171" : "#38bdf8", fontWeight: 500, whiteSpace: "nowrap", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {updateError ? updateError : `v${updateVersion} dispo`}
-                  </span>
-                  {!updateError && (
-                    <button
-                      onClick={handleInstallUpdate}
-                      disabled={installing}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 4,
-                        padding: "2px 8px", borderRadius: 4,
-                        fontSize: 9, fontWeight: 700,
-                        cursor: installing ? "not-allowed" : "pointer",
-                        background: "rgba(56,189,248,0.12)",
-                        border: "1px solid rgba(56,189,248,0.3)",
-                        color: "#38bdf8", transition: "all 0.15s", flexShrink: 0,
-                      }}
-                      onMouseEnter={e => { if (!installing) e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
-                    >
-                      {installing
-                        ? <div className="animate-spin" style={{ width: 7, height: 7, borderRadius: "50%", border: "2px solid rgba(56,189,248,0.2)", borderTopColor: "#38bdf8" }} />
-                        : <Download size={8} />}
-                      {installing ? "Installation..." : "Installer"}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => { setUpdateVersion(null); setUpdateError(null); }}
-                    style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}
-                  >
-                    <X size={9} />
-                  </button>
-                </>
               ) : (
-                /* ── Indicateur live normal ── */
+                /* ── Indicateur live + bouton update si dispo ── */
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <div style={{ width: 4, height: 4, borderRadius: "50%", background: "#22c55e" }} />
@@ -415,6 +465,23 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
                       Live
                     </span>
                   </div>
+                  {updateVersion && !showUpdateModal && (
+                    <button
+                      onClick={() => setShowUpdateModal(true)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 4,
+                        padding: "2px 8px", borderRadius: 4,
+                        fontSize: 9, fontWeight: 700,
+                        background: "rgba(56,189,248,0.12)",
+                        border: "1px solid rgba(56,189,248,0.3)",
+                        color: "#38bdf8", cursor: "pointer", transition: "all 0.15s", flexShrink: 0,
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
+                    >
+                      <Download size={8} /> v{updateVersion} dispo
+                    </button>
+                  )}
                   {tempAlert && (
                     <div
                       className="animate-fadeIn"
@@ -492,6 +559,128 @@ export default function Dashboard({ user, onLogout, onPremiumActivated }: Props)
           </div>
         </div>
       </div>
+
+      {/* ── Modal mise à jour ── */}
+      {showUpdateModal && updateVersion && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center animate-fadeIn"
+          style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)" }}
+          onClick={() => { if (!installing) { setShowUpdateModal(false); } }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: "#0e0e1c",
+              border: "1px solid rgba(56,189,248,0.2)",
+              borderRadius: 16,
+              padding: "28px 28px 24px",
+              width: 340,
+              boxShadow: "0 24px 64px rgba(0,0,0,0.7), 0 0 0 1px rgba(56,189,248,0.08)",
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.25)",
+                }}>
+                  <Download size={18} style={{ color: "#38bdf8" }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>Mise à jour disponible</div>
+                  <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>NexBoost v{updateVersion}</div>
+                </div>
+              </div>
+              {!installing && (
+                <button
+                  onClick={() => setShowUpdateModal(false)}
+                  style={{ background: "none", border: "none", color: "#4b5563", cursor: "pointer", padding: 4, display: "flex", borderRadius: 6 }}
+                  onMouseEnter={e => { e.currentTarget.style.color = "#94a3b8"; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = "#4b5563"; }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {/* Description */}
+            <p style={{ fontSize: 12, color: "#64748b", lineHeight: 1.6, marginBottom: 16 }}>
+              Une nouvelle version est prête à être installée. L'application se relancera automatiquement une fois la mise à jour terminée.
+            </p>
+
+            {/* Erreur */}
+            {updateError && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "10px 12px",
+                borderRadius: 8, marginBottom: 14,
+                background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)",
+              }}>
+                <AlertTriangle size={13} style={{ color: "#f87171", flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: "#f87171" }}>{updateError}</span>
+              </div>
+            )}
+
+            {/* Barre de progression (pendant install) */}
+            {installing && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: "#38bdf8" }}>Téléchargement en cours...</span>
+                </div>
+                <div style={{ height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 4, overflow: "hidden" }}>
+                  <div style={{
+                    height: "100%", borderRadius: 4,
+                    background: "linear-gradient(90deg, #38bdf8, #818cf8)",
+                    animation: "progress-indeterminate 1.5s ease-in-out infinite",
+                    width: "40%",
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {/* Boutons */}
+            <div style={{ display: "flex", gap: 8 }}>
+              {!installing && !updateError && (
+                <button
+                  onClick={() => setShowUpdateModal(false)}
+                  style={{
+                    flex: 1, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                    color: "#64748b", cursor: "pointer", transition: "all 0.15s",
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = "#64748b"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+                >
+                  Plus tard
+                </button>
+              )}
+              <button
+                onClick={updateError ? () => { setUpdateError(null); handleInstallUpdate(); } : handleInstallUpdate}
+                disabled={installing}
+                style={{
+                  flex: 2, padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 700,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.35)",
+                  color: "#38bdf8", cursor: installing ? "not-allowed" : "pointer",
+                  opacity: installing ? 0.8 : 1, transition: "all 0.15s",
+                }}
+                onMouseEnter={e => { if (!installing) e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
+              >
+                {installing ? (
+                  <>
+                    <div className="animate-spin" style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid rgba(56,189,248,0.2)", borderTopColor: "#38bdf8" }} />
+                    Installation...
+                  </>
+                ) : (
+                  <><Download size={13} /> {updateError ? "Réessayer" : "Installer maintenant"}</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Toasts ── */}
       {toasts.length > 0 && (

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Gamepad2, RefreshCw, Search, Play, Gauge, History, AlertTriangle } from "lucide-react";
+import { Gamepad2, RefreshCw, Search, Play, Gauge, History, AlertTriangle, Clock } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import type { InstalledGame, BenchmarkResult } from "../types";
@@ -160,6 +160,37 @@ export default function GamesTab({ userId }: Props) {
                   />
                 </div>
               )}
+
+              {/* Bannière à venir */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 14,
+                padding: "14px 18px", borderRadius: 10,
+                background: "rgba(167,139,250,0.06)",
+                border: "1px solid rgba(167,139,250,0.18)",
+              }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.25)",
+                }}>
+                  <Clock size={16} style={{ color: "#a78bfa" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>Optimisation & lancement par jeu</span>
+                    <span style={{
+                      fontSize: 8, fontWeight: 800, padding: "2px 7px", borderRadius: 4,
+                      background: "rgba(167,139,250,0.15)", border: "1px solid rgba(167,139,250,0.3)",
+                      color: "#a78bfa", letterSpacing: "0.1em",
+                    }}>
+                      BIENTÔT
+                    </span>
+                  </div>
+                  <p style={{ fontSize: 11, color: "#4b5563", margin: 0, lineHeight: 1.5 }}>
+                    Lancement direct des jeux, profils d'optimisation dédiés et tweaks automatiques par titre — en cours de développement.
+                  </p>
+                </div>
+              </div>
 
               {/* Liste */}
               {loading ? (

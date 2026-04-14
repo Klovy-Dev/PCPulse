@@ -1,6 +1,7 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Crown, CheckCircle, Bell, Monitor as MonitorIcon, Power, RefreshCw, AlertTriangle, CheckCircle as Check, XCircle, Copy, LogOut } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { activatePremiumKey } from "../lib/db";
 import type { SystemStats, SystemInfo, StartupProgram } from "../types";
 import type { UserData } from "../App";
@@ -36,7 +37,12 @@ const innerTabStyle = (active: boolean): React.CSSProperties => ({
 export default function SystemTab({
   user, activeCount, perfScore, stats, info, onLogout, onPremiumActivated,
 }: Props) {
-  const [inner, setInner] = useState<InnerTab>("startup");
+  const [inner,       setInner]      = useState<InnerTab>("startup");
+  const [appVersion,  setAppVersion] = useState("...");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion("0.1.3"));
+  }, []);
 
   const [programs, setPrograms] = useState<StartupProgram[]>([]);
   const [loading,  setLoading]  = useState(false);
@@ -186,7 +192,7 @@ export default function SystemTab({
       </div>
 
       {/* ── Contenu ── */}
-      <div style={{ flex: 1, overflow: inner === "settings" ? "auto" : "hidden" }}>
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden" }}>
         <div style={{ padding: "16px 22px 22px", display: "flex", flexDirection: "column", gap: 14 }}>
 
           {/* ═══ DÉMARRAGE ═══ */}
@@ -333,83 +339,92 @@ export default function SystemTab({
           {/* ═══ PARAMÈTRES ═══ */}
           {inner === "settings" && (
             <>
-              {/* Stats systèmes */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
-                {[
-                  { label: "Tweaks", value: `${activeCount}/${TWEAKS.length}`, color: "#38bdf8" },
-                  { label: "Score",  value: `${perfScore}/100`,                 color: "#4ade80" },
-                  { label: "CPU",    value: `${stats.cpu}%`,                    color: "#818cf8" },
-                  { label: "RAM",    value: stats.ram_total_gb > 0 ? `${stats.ram_used_gb}G` : "—", color: "#fbbf24" },
-                ].map(s => (
-                  <div key={s.label} style={{
-                    background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)",
-                    borderRadius: 10, padding: "12px 14px", textAlign: "center",
-                  }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "monospace", color: s.color, lineHeight: 1 }}>
-                      {s.value}
-                    </div>
-                    <div style={{ fontSize: 9, color: "#4b5563", marginTop: 5 }}>{s.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Actions compte */}
+              {/* ── Compte ── */}
               <div style={{
                 background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)",
-                borderRadius: 10, padding: "16px 18px",
-                display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                borderRadius: 12, padding: "16px 18px",
               }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9" }}>Compte</div>
-                  <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>{user.email}</div>
-                </div>
-                <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                  <button
-                    onClick={copySystemInfo}
-                    style={{
-                      padding: "7px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600,
-                      background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#94a3b8",
-                      cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s",
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(56,189,248,0.06)"; e.currentTarget.style.color = "#38bdf8"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "#94a3b8"; }}
-                  >
-                    <Copy size={11} />{copied ? "Copié !" : "Copier les infos"}
-                  </button>
-                  <button
-                    onClick={onLogout}
-                    style={{
-                      padding: "7px 12px", borderRadius: 7, fontSize: 11, fontWeight: 600,
-                      background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.2)", color: "#f87171",
-                      cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: "all 0.15s",
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,0.2)"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(248,113,113,0.1)"; }}
-                  >
-                    <LogOut size={11} />Déconnecter
-                  </button>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151", display: "block", marginBottom: 12 }}>
+                  COMPTE
+                </span>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 15, fontWeight: 800,
+                      background: user.premium ? "linear-gradient(135deg,#7c3aed,#a855f7)" : "rgba(56,189,248,0.12)",
+                      border: `1px solid ${user.premium ? "rgba(168,85,247,0.4)" : "rgba(56,189,248,0.25)"}`,
+                      color: user.premium ? "#fff" : "#38bdf8",
+                    }}>
+                      {user.premium ? <Crown size={16} /> : user.username.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {user.username}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {user.email}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 7, flexShrink: 0 }}>
+                    <button
+                      onClick={copySystemInfo}
+                      title="Copier les infos système"
+                      style={{
+                        padding: "7px 11px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+                        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#4b5563",
+                        cursor: "pointer", display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(56,189,248,0.06)"; e.currentTarget.style.borderColor = "rgba(56,189,248,0.2)"; e.currentTarget.style.color = "#38bdf8"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "#4b5563"; }}
+                    >
+                      <Copy size={11} />{copied ? "Copié !" : "Rapport"}
+                    </button>
+                    <button
+                      onClick={onLogout}
+                      style={{
+                        padding: "7px 11px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+                        background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.18)", color: "#f87171",
+                        cursor: "pointer", display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(248,113,113,0.18)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(248,113,113,0.08)"; }}
+                    >
+                      <LogOut size={11} />Déconnecter
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Seuils d'alerte */}
-              <div style={{ background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "16px 18px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-                  <Bell size={13} style={{ color: "#f97316" }} />
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#4b5563" }}>
+              {/* ── Seuils d'alerte ── */}
+              <div style={{ background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "16px 18px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 16 }}>
+                  <Bell size={12} style={{ color: "#f97316" }} />
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151" }}>
                     SEUILS D'ALERTE
                   </span>
+                  <span style={{ fontSize: 10, color: "#374151", marginLeft: 2 }}>— notification quand dépassé</span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
                   {([
-                    { key: "cpu",  label: "CPU",         color: "#38bdf8", val: cpuThr,  min: 60, max: 99 },
-                    { key: "ram",  label: "RAM",         color: "#818cf8", val: ramThr,  min: 60, max: 99 },
-                    { key: "temp", label: "Température", color: "#f97316", val: tempThr, min: 50, max: 99 },
+                    { key: "cpu",  label: "CPU",         unit: "%",  color: "#38bdf8", val: cpuThr,  min: 60, max: 99 },
+                    { key: "ram",  label: "RAM",         unit: "%",  color: "#818cf8", val: ramThr,  min: 60, max: 99 },
+                    { key: "temp", label: "Température", unit: "°C", color: "#f97316", val: tempThr, min: 50, max: 99 },
                   ] as const).map(s => (
                     <div key={s.key}>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>{s.label}</span>
-                        <span style={{ fontSize: 13, fontWeight: 700, fontFamily: "monospace", color: s.color }}>
-                          {s.val}{s.key === "temp" ? " °C" : " %"}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, fontWeight: 500, color: "#94a3b8" }}>{s.label}</span>
+                        </div>
+                        <span style={{
+                          fontSize: 13, fontWeight: 700, fontFamily: "monospace",
+                          color: s.color, background: `${s.color}14`,
+                          padding: "2px 8px", borderRadius: 5,
+                        }}>
+                          {s.val}{s.unit}
                         </span>
                       </div>
                       <input
@@ -418,74 +433,101 @@ export default function SystemTab({
                         style={{ width: "100%", accentColor: s.color, cursor: "pointer" }}
                       />
                       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4 }}>
-                        <span style={{ fontSize: 10, color: "#4b5563" }}>{s.min}{s.key === "temp" ? "°C" : "%"}</span>
-                        <span style={{ fontSize: 10, color: "#4b5563" }}>{s.max}{s.key === "temp" ? "°C" : "%"}</span>
+                        <span style={{ fontSize: 10, color: "#374151" }}>{s.min}{s.unit}</span>
+                        <span style={{ fontSize: 10, color: "#374151" }}>{s.max}{s.unit}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Overlay gaming */}
-              <div style={{ background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "16px 18px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <MonitorIcon size={13} style={{ color: "#38bdf8" }} />
-                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#4b5563" }}>
-                    MINI OVERLAY GAMING
-                  </span>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: "#f1f5f9" }}>Overlay toujours visible</div>
-                    <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>
-                      Fenêtre compacte affichée au-dessus de vos jeux
+              {/* ── Overlay gaming ── */}
+              <div style={{ background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "16px 18px" }}>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151", display: "block", marginBottom: 12 }}>
+                  OVERLAY GAMING
+                </span>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: "rgba(56,189,248,0.1)", border: "1px solid rgba(56,189,248,0.18)",
+                    }}>
+                      <MonitorIcon size={16} style={{ color: "#38bdf8" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: "#f1f5f9" }}>Mini overlay always-on-top</div>
+                      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>S'affiche par-dessus vos jeux</div>
                     </div>
                   </div>
                   <button
                     onClick={() => invoke("open_overlay").catch(() => {})}
                     style={{
-                      padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700,
-                      background: "#38bdf8", color: "#020817", border: "none", cursor: "pointer",
-                      transition: "all 0.15s",
+                      padding: "8px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700, flexShrink: 0,
+                      background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.3)", color: "#38bdf8",
+                      cursor: "pointer", transition: "all 0.15s",
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = "#7dd3fc"; }}
-                    onMouseLeave={e => { e.currentTarget.style.background = "#38bdf8"; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(56,189,248,0.22)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(56,189,248,0.12)"; }}
                   >
                     Ouvrir
                   </button>
                 </div>
               </div>
 
-              {/* Premium */}
+              {/* ── Premium ── */}
               <div style={{
                 background: "#0c0c1a",
-                border: `1px solid ${user.premium ? "rgba(124,58,237,0.3)" : "rgba(124,58,237,0.15)"}`,
-                borderRadius: 10, padding: "16px 18px",
+                border: `1px solid ${user.premium ? "rgba(124,58,237,0.35)" : "rgba(255,255,255,0.06)"}`,
+                borderRadius: 12, padding: "16px 18px",
+                position: "relative", overflow: "hidden",
               }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(124,58,237,0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <Crown size={16} style={{ color: "#a78bfa" }} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: "#f1f5f9", display: "flex", alignItems: "center", gap: 8 }}>
-                      {user.premium ? "Premium actif" : "Passer en Premium"}
-                      {user.premium && (
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "rgba(168,85,247,0.12)", border: "1px solid rgba(168,85,247,0.3)", color: "#c084fc" }}>
-                          ACTIF
-                        </span>
-                      )}
+                {user.premium && (
+                  <div style={{
+                    position: "absolute", top: 0, right: 0, width: 120, height: 120,
+                    background: "radial-gradient(circle, rgba(124,58,237,0.12) 0%, transparent 70%)",
+                    pointerEvents: "none",
+                  }} />
+                )}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      background: user.premium ? "linear-gradient(135deg,#7c3aed,#a855f7)" : "rgba(124,58,237,0.1)",
+                      border: `1px solid ${user.premium ? "rgba(168,85,247,0.5)" : "rgba(124,58,237,0.2)"}`,
+                    }}>
+                      <Crown size={15} style={{ color: user.premium ? "#fff" : "#a78bfa" }} />
                     </div>
-                    <div style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>
-                      {user.premium ? "Toutes les fonctionnalités sont actives" : "Débloquez toutes les fonctionnalités"}
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>
+                        {user.premium ? "Plan Premium" : "Passer en Premium"}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#4b5563", marginTop: 1 }}>
+                        {user.premium ? "Toutes les fonctionnalités débloquées" : "Débloquez tout NexBoost"}
+                      </div>
                     </div>
                   </div>
+                  {user.premium && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
+                      background: "rgba(168,85,247,0.15)", border: "1px solid rgba(168,85,247,0.35)", color: "#c084fc",
+                      letterSpacing: "0.08em",
+                    }}>
+                      ACTIF
+                    </span>
+                  )}
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", marginBottom: 14 }}>
-                  {["Profils de jeu personnalisés", "Overlay amélioré", "Optimisations avancées", "Support prioritaire", "Historique illimité", "Détection auto des jeux"].map(f => (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "7px 16px", marginBottom: 14 }}>
+                  {[
+                    "Profils de jeu", "Overlay amélioré",
+                    "Optimisations avancées", "Support prioritaire",
+                    "Historique illimité", "Détection auto jeux",
+                  ].map(f => (
                     <div key={f} style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                      <CheckCircle size={11} style={{ color: user.premium ? "#a78bfa" : "#4ade80", flexShrink: 0 }} />
-                      <span style={{ fontSize: 11, color: "#4b5563" }}>{f}</span>
+                      <CheckCircle size={10} style={{ color: user.premium ? "#a78bfa" : "#374151", flexShrink: 0 }} />
+                      <span style={{ fontSize: 11, color: user.premium ? "#64748b" : "#374151" }}>{f}</span>
                     </div>
                   ))}
                 </div>
@@ -493,25 +535,25 @@ export default function SystemTab({
                 {user.premium ? (
                   <div style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                    padding: "10px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                    background: "rgba(124,58,237,0.12)", border: "1px solid rgba(124,58,237,0.2)", color: "#a78bfa",
+                    padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                    background: "rgba(124,58,237,0.1)", border: "1px solid rgba(124,58,237,0.2)", color: "#a78bfa",
                   }}>
-                    <Crown size={13} />Premium activé — Merci !
+                    <Crown size={12} /> Premium activé — Merci !
                   </div>
                 ) : keySuccess ? (
                   <div style={{
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                    padding: "10px 20px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                    padding: "9px 0", borderRadius: 8, fontSize: 12, fontWeight: 600,
                     background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", color: "#4ade80",
                   }} className="animate-fadeIn">
-                    <CheckCircle size={13} />Premium activé avec succès !
+                    <CheckCircle size={12} /> Premium activé avec succès !
                   </div>
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input
                         className="input-base"
-                        style={{ padding: "8px 12px", fontSize: 12, letterSpacing: "0.06em" }}
+                        style={{ padding: "8px 12px", fontSize: 12, letterSpacing: "0.08em", fontFamily: "monospace" }}
                         placeholder="XXXX-XXXX-XXXX-XXXX"
                         value={keyInput}
                         onChange={e => { setKeyInput(e.target.value.toUpperCase()); setKeyError(""); }}
@@ -522,48 +564,46 @@ export default function SystemTab({
                         disabled={keyLoading}
                         style={{
                           padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700, flexShrink: 0,
-                          background: "linear-gradient(135deg, #7c3aed, #38bdf8)", color: "#fff", border: "none",
+                          background: "linear-gradient(135deg, #7c3aed, #a855f7)", color: "#fff", border: "none",
                           cursor: keyLoading ? "not-allowed" : "pointer",
-                          display: "flex", alignItems: "center", gap: 7, transition: "opacity 0.15s",
+                          display: "flex", alignItems: "center", gap: 6, transition: "opacity 0.15s",
                           opacity: keyLoading ? 0.6 : 1,
                         }}
                       >
                         {keyLoading
                           ? <div className="animate-spin" style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(255,255,255,0.2)", borderTopColor: "#fff" }} />
-                          : <><Crown size={12} />Activer</>}
+                          : <><Crown size={12} /> Activer</>}
                       </button>
                     </div>
-                    {keyError && <p style={{ fontSize: 11, color: "#f87171", margin: 0 }} className="animate-fadeIn">{keyError}</p>}
+                    {keyError && (
+                      <p style={{ fontSize: 11, color: "#f87171", margin: 0, display: "flex", alignItems: "center", gap: 5 }} className="animate-fadeIn">
+                        <AlertTriangle size={11} />{keyError}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* À propos */}
-              <div style={{ background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "16px 18px" }}>
-                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#4b5563", display: "block", marginBottom: 12 }}>
-                  À PROPOS DE NEXBOOST
+              {/* ── À propos ── */}
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+                padding: "12px 18px", borderRadius: 10,
+                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+              }}>
+                <span style={{ fontSize: 10, color: "#374151" }}>NexBoost</span>
+                <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#374151" }} />
+                <span style={{
+                  fontSize: 10, fontWeight: 700, fontFamily: "monospace",
+                  color: "#38bdf8", background: "rgba(56,189,248,0.08)",
+                  padding: "2px 8px", borderRadius: 4,
+                }}>
+                  v{appVersion}
                 </span>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" }}>
-                  {[
-                    { l: "Version",         v: "1.0.0 Alpha"        },
-                    { l: "Plateforme",      v: "Windows 10/11"      },
-                    { l: "Frontend",        v: "React + TypeScript" },
-                    { l: "Backend",         v: "Tauri 2 (Rust)"     },
-                    { l: "Stats système",   v: "sysinfo v0.32"      },
-                    { l: "Base de données", v: "Turso (LibSQL)"     },
-                  ].map(row => (
-                    <div key={row.l} style={{
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    }}>
-                      <span style={{ fontSize: 11, color: "#4b5563" }}>{row.l}</span>
-                      <span style={{ fontSize: 11, fontWeight: 500, color: "#94a3b8" }}>{row.v}</span>
-                    </div>
-                  ))}
-                </div>
+                <div style={{ width: 3, height: 3, borderRadius: "50%", background: "#374151" }} />
+                <span style={{ fontSize: 10, color: "#374151" }}>Windows 10/11</span>
               </div>
 
-              <div style={{ height: 4 }} />
+              <div style={{ height: 2 }} />
             </>
           )}
         </div>
