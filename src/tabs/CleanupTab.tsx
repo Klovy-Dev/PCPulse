@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, Trash2, AlertTriangle, CheckCircle, SquareCheck, Square, MemoryStick, Globe, Recycle } from "lucide-react";
+import { RefreshCw, Trash2, AlertTriangle, CheckCircle, SquareCheck, Square, MemoryStick, Globe, Recycle, HardDrive } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import type { CleanCategory, CleanResult } from "../types";
 
-type QuickAction = "ram" | "recycle" | "dns";
+type QuickAction = "ram" | "recycle" | "dns" | "cleandisk";
 type QuickState  = { loading: boolean; result: string | null };
 type RamCleanResult = { before_mb: number; after_mb: number; freed_mb: number };
 
@@ -15,9 +15,10 @@ export default function CleanupTab() {
   const [cleanResult,  setCleanResult]  = useState<CleanResult | null>(null);
   const [ramResult,    setRamResult]    = useState<RamCleanResult | null>(null);
   const [quick, setQuick] = useState<Record<QuickAction, QuickState>>({
-    ram:     { loading: false, result: null },
-    recycle: { loading: false, result: null },
-    dns:     { loading: false, result: null },
+    ram:      { loading: false, result: null },
+    recycle:  { loading: false, result: null },
+    dns:      { loading: false, result: null },
+    cleandisk:{ loading: false, result: null },
   });
 
   useEffect(() => { scan(); }, []);
@@ -43,6 +44,9 @@ export default function CleanupTab() {
         const res = await invoke<CleanResult>("empty_recycle_bin");
         const msg = res.freed_mb > 0 ? `${fmt(res.freed_mb)} libérés` : "Corbeille vidée";
         setQuick(q => ({ ...q, recycle: { loading: false, result: msg } }));
+      } else if (action === "cleandisk") {
+        await invoke<boolean>("run_cleandisk");
+        setQuick(q => ({ ...q, cleandisk: { loading: false, result: "Lancé ✓" } }));
       } else {
         await invoke<string>("flush_dns");
         setQuick(q => ({ ...q, dns: { loading: false, result: "DNS vidé" } }));
@@ -126,11 +130,12 @@ export default function CleanupTab() {
       </div>
 
       {/* ── Actions rapides ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, flexShrink: 0 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, flexShrink: 0 }}>
         {([
-          { key: "ram"     as QuickAction, icon: <MemoryStick size={14} />, label: "Nettoyer RAM",    color: "#818cf8" },
-          { key: "recycle" as QuickAction, icon: <Recycle     size={14} />, label: "Vider Corbeille", color: "#4ade80" },
-          { key: "dns"     as QuickAction, icon: <Globe       size={14} />, label: "Flush DNS",       color: "#38bdf8" },
+          { key: "ram"       as QuickAction, icon: <MemoryStick size={14} />, label: "Nettoyer RAM",     color: "#818cf8" },
+          { key: "recycle"   as QuickAction, icon: <Recycle     size={14} />, label: "Vider Corbeille",  color: "#4ade80" },
+          { key: "dns"       as QuickAction, icon: <Globe       size={14} />, label: "Flush DNS",        color: "#38bdf8" },
+          { key: "cleandisk" as QuickAction, icon: <HardDrive   size={14} />, label: "CleanDisk Windows",color: "#fbbf24" },
         ]).map(({ key, icon, label, color }) => {
           const state = quick[key];
           return (

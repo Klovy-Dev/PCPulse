@@ -11,7 +11,7 @@ export interface Tweak {
   desc:  string;
   icon:  React.ReactNode;
   color: string;
-  group: "fps" | "latency" | "network" | "input" | "services";
+  group: "fps" | "latency" | "network" | "input" | "services" | "gpu";
   requiresAdmin?: boolean;
 }
 
@@ -70,6 +70,18 @@ export const TWEAKS: Tweak[] = [
     label: "Activer le Game Mode Windows",
     desc:  "Priorise le jeu actif et réduit l'activité des tâches en arrière-plan",
     icon: <Gauge size={14} />,
+  },
+  {
+    id: "msi_mode", group: "fps", color: "#f59e0b", requiresAdmin: true,
+    label: "MSI Mode GPU & Réseau",
+    desc:  "Active les interruptions MSI sur GPU et carte réseau — réduit la latence d'interruption matérielle",
+    icon: <Cpu size={14} />,
+  },
+  {
+    id: "c_states", group: "fps", color: "#f59e0b", requiresAdmin: true,
+    label: "Désactiver C-States CPU",
+    desc:  "Empêche le CPU d'entrer en veille profonde — élimine les latences de réveil entre les frames",
+    icon: <Zap size={14} />,
   },
 
   // ─── Latence Système ─────────────────────────────────────────
@@ -150,6 +162,38 @@ export const TWEAKS: Tweak[] = [
     icon: <Keyboard size={14} />,
   },
 
+  // ─── GPU Optimisations ───────────────────────────────────────
+  {
+    id: "nvidia_low_latency", group: "gpu", color: "#76d275", requiresAdmin: true,
+    label: "NVIDIA Low Latency Ultra",
+    desc:  "Force 0 frame pré-rendu — réduit la latence GPU de manière significative",
+    icon: <Monitor size={14} />,
+  },
+  {
+    id: "nvidia_threaded_opt", group: "gpu", color: "#76d275", requiresAdmin: true,
+    label: "NVIDIA Threaded Optimization OFF",
+    desc:  "Désactive l'optimisation multithread NVIDIA — recommandé pour les jeux CPU-bound",
+    icon: <Cpu size={14} />,
+  },
+  {
+    id: "nvidia_shader_cache", group: "gpu", color: "#76d275", requiresAdmin: true,
+    label: "Shader Cache DirectX activé",
+    desc:  "Active le cache de shaders DirectX globalement — réduit les micro-stutters au premier chargement",
+    icon: <HardDrive size={14} />,
+  },
+  {
+    id: "amd_ulps", group: "gpu", color: "#76d275", requiresAdmin: true,
+    label: "Désactiver AMD ULPS",
+    desc:  "Désactive l'Ultra Low Power State AMD — évite les baisses de fréquence GPU imprévues",
+    icon: <Zap size={14} />,
+  },
+  {
+    id: "amd_anti_lag", group: "gpu", color: "#76d275", requiresAdmin: true,
+    label: "AMD High Performance Mode",
+    desc:  "Force le GPU AMD en haute performance — désactive les états d'économie d'énergie en jeu",
+    icon: <Gauge size={14} />,
+  },
+
   // ─── Services Windows ─────────────────────────────────────────
   {
     id: "visual", group: "services", color: "#059669",
@@ -181,6 +225,12 @@ export const TWEAKS: Tweak[] = [
     desc:  "Arrête DiagTrack et bloque la collecte de données Microsoft en arrière-plan",
     icon: <Shield size={14} />,
   },
+  {
+    id: "defender_realtime", group: "services", color: "#059669", requiresAdmin: true,
+    label: "Suspendre Defender (session jeu)",
+    desc:  "Désactive la protection temps réel Windows Defender — à réactiver après la session",
+    icon: <Shield size={14} />,
+  },
 ];
 
 export const TWEAK_GROUPS: { id: Tweak["group"]; label: string; color: string }[] = [
@@ -188,13 +238,14 @@ export const TWEAK_GROUPS: { id: Tweak["group"]; label: string; color: string }[
   { id: "latency",  label: "Latence Système",  color: "#ef4444" },
   { id: "network",  label: "Réseau",           color: "#0891b2" },
   { id: "input",    label: "Clavier & Souris", color: "#8b5cf6" },
+  { id: "gpu",      label: "GPU Optimisations", color: "#76d275" },
   { id: "services", label: "Services Windows", color: "#059669" },
 ];
 
 export const PROFILES = [
   {
     id: "game", label: "Jeu", color: "#f59e0b",
-    tweaks: ["power","priority","hags","gamebar","gamemode","nagle","network_throttle","mmcss","mouse_accel","keyboard_speed","network","qos","core_parking","power_throttling"],
+    tweaks: ["power","priority","hags","gamebar","gamemode","nagle","network_throttle","mmcss","mouse_accel","keyboard_speed","network","qos","core_parking","power_throttling","msi_mode","c_states","defender_realtime"],
     desc: "Performances maximales pour le gaming",
   },
   {

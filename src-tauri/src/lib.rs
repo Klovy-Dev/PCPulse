@@ -454,6 +454,18 @@ fn apply_tweak(id: String) -> TweakResult {
         "diagtrack"        => run_ps("try{Stop-Service DiagTrack -Force -EA SilentlyContinue}catch{}; try{Set-Service DiagTrack -StartupType Disabled -EA SilentlyContinue}catch{}; $p='HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows\\DataCollection'; if(!(Test-Path $p)){New-Item $p -Force|Out-Null}; Set-ItemProperty $p AllowTelemetry 0 -Type DWord -Force"),
         // ── Alimentation ──
         "ultimate_performance" => run_ps("$guid='e9a42b02-d5df-448d-aa00-03f14749eb61'; $list=(powercfg /list 2>&1|Out-String); if($list -match $guid){ powercfg /setactive $guid }else{ $out=(powercfg /duplicatescheme $guid 2>&1|Out-String); if($out -match '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'){ powercfg /setactive $matches[1] } }; (powercfg /getactivescheme) -match $guid"),
+        // ── FPS avancés ──
+        "msi_mode" => run_ps(r#"$ok=$true; try { $disp=Get-PnpDevice -Class Display -EA Stop|Where-Object{$_.Status -eq 'OK'}; foreach($d in $disp){$p="HKLM:\SYSTEM\CurrentControlSet\Enum\$($d.InstanceId)\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"; if(!(Test-Path $p)){New-Item $p -Force|Out-Null}; Set-ItemProperty $p MSISupported 1 -Type DWord -Force} } catch{$ok=$false}; try { $nets=Get-PnpDevice -Class Net -EA Stop|Where-Object{$_.Status -eq 'OK'}; foreach($n in $nets){$p="HKLM:\SYSTEM\CurrentControlSet\Enum\$($n.InstanceId)\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"; if(!(Test-Path $p)){New-Item $p -Force|Out-Null}; Set-ItemProperty $p MSISupported 1 -Type DWord -Force} } catch{$ok=$false}; $ok"#),
+        "c_states" => run_ps("powercfg -setacvalueindex SCHEME_CURRENT 54533251-82be-4824-96c1-47b60b740d00 5d76a2ca-e8c0-402f-a133-2158492d58ad 1; powercfg -setdcvalueindex SCHEME_CURRENT 54533251-82be-4824-96c1-47b60b740d00 5d76a2ca-e8c0-402f-a133-2158492d58ad 1; powercfg -s SCHEME_CURRENT"),
+        // ── GPU NVIDIA ──
+        "nvidia_low_latency" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; $k=Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{(Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop)-like '*NVIDIA*'}catch{$false}}|Select-Object -First 1; if($k){Set-ItemProperty $k.PSPath 'D3DPrerenderedFrames' 0 -Type DWord -Force; Set-ItemProperty $k.PSPath 'PerfLevelSrc' 0x2222 -Type DWord -Force; $true}else{$false}"#),
+        "nvidia_threaded_opt" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; $k=Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{(Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop)-like '*NVIDIA*'}catch{$false}}|Select-Object -First 1; if($k){Set-ItemProperty $k.PSPath 'OGLThreadControl' 0 -Type DWord -Force; $true}else{$false}"#),
+        "nvidia_shader_cache" => run_ps(r#"$p='HKLM:\SOFTWARE\Microsoft\DirectX\UserGpuPreferences'; if(!(Test-Path $p)){New-Item $p -Force|Out-Null}; Set-ItemProperty $p DirectXUserGlobalSettings 'ShaderCache=EnabledGlobally;' -Force; $true"#),
+        // ── GPU AMD ──
+        "amd_ulps" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; $ks=Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{$d=Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop;$d -like '*AMD*'-or $d -like '*Radeon*'-or $d -like '*ATI*'}catch{$false}}; foreach($k in $ks){Set-ItemProperty $k.PSPath 'EnableUlps' 0 -Type DWord -Force}; ($ks|Measure-Object).Count -gt 0"#),
+        "amd_anti_lag" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; $ks=Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{$d=Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop;$d -like '*AMD*'-or $d -like '*Radeon*'-or $d -like '*ATI*'}catch{$false}}; foreach($k in $ks){Set-ItemProperty $k.PSPath 'PP_SclkDeepSleepDisable' 1 -Type DWord -Force; Set-ItemProperty $k.PSPath 'AmdPowerXpressRequestHighPerformance' 1 -Type DWord -Force}; ($ks|Measure-Object).Count -gt 0"#),
+        // ── Defender ──
+        "defender_realtime" => run_ps("Set-MpPreference -DisableRealtimeMonitoring $true -EA SilentlyContinue; $true"),
         _ => false,
     };
     TweakResult {
@@ -502,6 +514,18 @@ fn revert_tweak(id: String) -> TweakResult {
         "diagtrack"        => run_ps("try{Set-Service DiagTrack -StartupType Automatic -EA SilentlyContinue; Start-Service DiagTrack -EA SilentlyContinue}catch{}"),
         // ── Alimentation ──
         "ultimate_performance" => run_ps("powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"),
+        // ── FPS avancés ──
+        "msi_mode" => run_ps(r#"$ok=$true; try{$disp=Get-PnpDevice -Class Display -EA Stop|Where-Object{$_.Status -eq 'OK'}; foreach($d in $disp){$p="HKLM:\SYSTEM\CurrentControlSet\Enum\$($d.InstanceId)\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"; try{Set-ItemProperty $p MSISupported 0 -Type DWord -Force -EA Stop}catch{}}}catch{$ok=$false}; try{$nets=Get-PnpDevice -Class Net -EA Stop|Where-Object{$_.Status -eq 'OK'}; foreach($n in $nets){$p="HKLM:\SYSTEM\CurrentControlSet\Enum\$($n.InstanceId)\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"; try{Set-ItemProperty $p MSISupported 0 -Type DWord -Force -EA Stop}catch{}}}catch{$ok=$false}; $ok"#),
+        "c_states" => run_ps("powercfg -setacvalueindex SCHEME_CURRENT 54533251-82be-4824-96c1-47b60b740d00 5d76a2ca-e8c0-402f-a133-2158492d58ad 0; powercfg -setdcvalueindex SCHEME_CURRENT 54533251-82be-4824-96c1-47b60b740d00 5d76a2ca-e8c0-402f-a133-2158492d58ad 0; powercfg -s SCHEME_CURRENT"),
+        // ── GPU NVIDIA ──
+        "nvidia_low_latency" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; $k=Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{(Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop)-like '*NVIDIA*'}catch{$false}}|Select-Object -First 1; if($k){try{Remove-ItemProperty $k.PSPath 'D3DPrerenderedFrames' -Force -EA Stop}catch{}; try{Remove-ItemProperty $k.PSPath 'PerfLevelSrc' -Force -EA Stop}catch{}}; $true"#),
+        "nvidia_threaded_opt" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; $k=Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{(Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop)-like '*NVIDIA*'}catch{$false}}|Select-Object -First 1; if($k){try{Remove-ItemProperty $k.PSPath 'OGLThreadControl' -Force -EA Stop}catch{}}; $true"#),
+        "nvidia_shader_cache" => run_ps(r#"try{Remove-ItemProperty 'HKLM:\SOFTWARE\Microsoft\DirectX\UserGpuPreferences' DirectXUserGlobalSettings -Force -EA Stop}catch{}; $true"#),
+        // ── GPU AMD ──
+        "amd_ulps" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{$d=Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop;$d -like '*AMD*'-or $d -like '*Radeon*'-or $d -like '*ATI*'}catch{$false}}|ForEach-Object{Set-ItemProperty $_.PSPath 'EnableUlps' 1 -Type DWord -Force}; $true"#),
+        "amd_anti_lag" => run_ps(r#"$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'; Get-ChildItem $cls -EA SilentlyContinue|Where-Object{try{$d=Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop;$d -like '*AMD*'-or $d -like '*Radeon*'-or $d -like '*ATI*'}catch{$false}}|ForEach-Object{try{Remove-ItemProperty $_.PSPath 'PP_SclkDeepSleepDisable' -Force -EA Stop}catch{}; try{Remove-ItemProperty $_.PSPath 'AmdPowerXpressRequestHighPerformance' -Force -EA Stop}catch{}}; $true"#),
+        // ── Defender ──
+        "defender_realtime" => run_ps("Set-MpPreference -DisableRealtimeMonitoring $false -EA SilentlyContinue; $true"),
         _ => false,
     };
     TweakResult {
@@ -553,6 +577,18 @@ $r.diagtrack=(Get-Service DiagTrack -EA SilentlyContinue).StartType -eq 'Disable
 # ── Alimentation ──
 $guid='e9a42b02-d5df-448d-aa00-03f14749eb61'
 $r.ultimate_performance=$false;try{$active=(powercfg /getactivescheme 2>&1|Out-String);$list=(powercfg /list 2>&1|Out-String);$r.ultimate_performance=($list -match $guid)-and($active -match $guid)}catch{}
+# ── FPS avancés ──
+$r.msi_mode=$false;try{$d=Get-PnpDevice -Class Display -Status OK -EA Stop|Select-Object -First 1;if($d){$p="HKLM:\SYSTEM\CurrentControlSet\Enum\$($d.InstanceId)\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties";$r.msi_mode=try{(Get-ItemPropertyValue $p MSISupported -EA Stop)-eq 1}catch{$false}}}catch{}
+$r.c_states=$false;try{$out=(powercfg -q SCHEME_CURRENT 54533251-82be-4824-96c1-47b60b740d00 5d76a2ca-e8c0-402f-a133-2158492d58ad 2>&1)-join ' ';$r.c_states=$out -match '0x00000001'}catch{}
+# ── GPU NVIDIA ──
+$r.nvidia_low_latency=$false;try{$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}';$k=Get-ChildItem $cls -EA Stop|Where-Object{try{(Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop)-like '*NVIDIA*'}catch{$false}}|Select-Object -First 1;if($k){$r.nvidia_low_latency=try{(Get-ItemPropertyValue $k.PSPath 'D3DPrerenderedFrames' -EA Stop)-eq 0}catch{$false}}}catch{}
+$r.nvidia_threaded_opt=$false;try{$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}';$k=Get-ChildItem $cls -EA Stop|Where-Object{try{(Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop)-like '*NVIDIA*'}catch{$false}}|Select-Object -First 1;if($k){$r.nvidia_threaded_opt=try{(Get-ItemPropertyValue $k.PSPath 'OGLThreadControl' -EA Stop)-eq 0}catch{$false}}}catch{}
+$r.nvidia_shader_cache=$false;try{$v=Get-ItemPropertyValue 'HKLM:\SOFTWARE\Microsoft\DirectX\UserGpuPreferences' DirectXUserGlobalSettings -EA Stop;$r.nvidia_shader_cache=$v -like '*EnabledGlobally*'}catch{}
+# ── GPU AMD ──
+$r.amd_ulps=$false;try{$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}';$k=Get-ChildItem $cls -EA Stop|Where-Object{try{$d=Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop;$d -like '*AMD*'-or $d -like '*Radeon*'-or $d -like '*ATI*'}catch{$false}}|Select-Object -First 1;if($k){$r.amd_ulps=try{(Get-ItemPropertyValue $k.PSPath 'EnableUlps' -EA Stop)-eq 0}catch{$false}}}catch{}
+$r.amd_anti_lag=$false;try{$cls='HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}';$k=Get-ChildItem $cls -EA Stop|Where-Object{try{$d=Get-ItemPropertyValue $_.PSPath 'DriverDesc' -EA Stop;$d -like '*AMD*'-or $d -like '*Radeon*'-or $d -like '*ATI*'}catch{$false}}|Select-Object -First 1;if($k){$r.amd_anti_lag=try{(Get-ItemPropertyValue $k.PSPath 'AmdPowerXpressRequestHighPerformance' -EA Stop)-eq 1}catch{$false}}}catch{}
+# ── Defender ──
+$r.defender_realtime=$false;try{$pref=Get-MpPreference -EA Stop;$r.defender_realtime=$pref.DisableRealtimeMonitoring -eq $true}catch{}
 $r|ConvertTo-Json -Compress
 "#;
 
@@ -575,14 +611,130 @@ $r|ConvertTo-Json -Compress
     { let _ = script; }
 
     ["power","visual","gamebar","network","sysmain","priority","wsearch","gamemode",
-     "hags","core_parking","power_throttling","timer_res",
+     "hags","core_parking","power_throttling","timer_res","msi_mode","c_states",
      "nagle","network_throttle","mmcss","dynamic_tick",
      "dns_fast","qos","lso",
      "mouse_accel","mouse_raw","keyboard_speed","keyboard_buffer",
-     "xbox_services","diagtrack"]
+     "nvidia_low_latency","nvidia_threaded_opt","nvidia_shader_cache",
+     "amd_ulps","amd_anti_lag",
+     "xbox_services","diagtrack","defender_realtime","ultimate_performance"]
         .iter()
         .map(|id| TweakStatus { id: id.to_string(), active: false })
         .collect()
+}
+
+// ─── Mémoire virtuelle ───────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct VirtualMemoryInfo {
+    pub ram_total_gb:   f32,
+    pub is_auto:        bool,
+    pub min_mb:         u32,
+    pub max_mb:         u32,
+}
+
+#[tauri::command]
+fn get_virtual_memory_info(state: tauri::State<SysState>) -> VirtualMemoryInfo {
+    let ram_total_gb = state.sys_cache.lock().unwrap().ram_total_gb;
+    let out = ps_out(r#"
+$cs = Get-WmiObject Win32_ComputerSystem -EA SilentlyContinue
+$pf = Get-WmiObject Win32_PageFileSetting -EA SilentlyContinue | Select-Object -First 1
+$auto = if ($cs) { [string]$cs.AutomaticManagedPagefile } else { 'True' }
+$min  = if ($pf) { $pf.InitialSize } else { 0 }
+$max  = if ($pf) { $pf.MaximumSize } else { 0 }
+"$auto|$min|$max"
+"#);
+    let parts: Vec<&str> = out.split('|').collect();
+    if parts.len() >= 3 {
+        return VirtualMemoryInfo {
+            ram_total_gb,
+            is_auto: parts[0].trim().to_lowercase() != "false",
+            min_mb:  parts[1].trim().parse().unwrap_or(0),
+            max_mb:  parts[2].trim().parse().unwrap_or(0),
+        };
+    }
+    VirtualMemoryInfo { ram_total_gb, is_auto: true, min_mb: 0, max_mb: 0 }
+}
+
+#[tauri::command]
+fn set_virtual_memory(optimize: bool) -> bool {
+    if optimize {
+        run_ps(r#"
+$ramMB = [int]((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1MB)
+$minMB = [int]($ramMB * 1.5); $maxMB = [int]($ramMB * 3)
+$cs = Get-WmiObject Win32_ComputerSystem; $cs.AutomaticManagedPagefile = $false; $cs.Put() | Out-Null
+Get-WmiObject Win32_PageFileSetting | ForEach-Object { $_.Delete() | Out-Null }
+$pf = ([WMIClass]"Win32_PageFileSetting").CreateInstance()
+$pf.Name = "$env:SystemDrive\pagefile.sys"; $pf.InitialSize = $minMB; $pf.MaximumSize = $maxMB
+$pf.Put() | Out-Null; $true
+"#)
+    } else {
+        run_ps(r#"$cs = Get-WmiObject Win32_ComputerSystem; $cs.AutomaticManagedPagefile = $true; $cs.Put() | Out-Null; $true"#)
+    }
+}
+
+// ─── Auto-Boost Gaming Session ───────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct AutoBoostResult {
+    pub game_detected:     bool,
+    pub game_name:         String,
+    pub processes_boosted: u32,
+}
+
+#[tauri::command]
+fn auto_boost_session(state: tauri::State<SysState>) -> AutoBoostResult {
+    let game_patterns: &[&str] = &[
+        "steam", "epicgameslauncher", "riotclient", "battle.net", "origin", "upc", "galaxyclient",
+        "minecraft", "fortnite", "valorant", "cs2", "csgo", "leagueoflegends",
+        "dota2", "overwatch", "gta5", "gtav", "rocketleague", "apexlegends",
+        "warzone", "pubg-win", "rustclient", "r6siege", "eft", "valorant",
+    ];
+
+    let procs = state.proc_cache.lock().unwrap().clone();
+    let game_procs: Vec<&ProcessInfo> = procs.iter()
+        .filter(|p| {
+            let n = p.name.to_lowercase();
+            game_patterns.iter().any(|pat| n.contains(pat))
+        })
+        .collect();
+
+    if game_procs.is_empty() {
+        return AutoBoostResult { game_detected: false, game_name: String::new(), processes_boosted: 0 };
+    }
+
+    let game_name = game_procs.first().map(|p| p.name.clone()).unwrap_or_default();
+    let pids_str  = game_procs.iter().map(|p| p.pid.to_string()).collect::<Vec<_>>().join(",");
+
+    // Boost priorité + nettoyer RAM
+    let script = format!(
+        r#"@({pids}) | ForEach-Object {{ try {{ (Get-Process -Id $_ -EA Stop).PriorityClass = 'High' }} catch {{}} }}
+Add-Type @'
+using System; using System.Runtime.InteropServices; using System.Diagnostics;
+public class RCB {{ [DllImport("psapi.dll")] public static extern bool EmptyWorkingSet(IntPtr h); public static void Clean() {{ foreach(var p in Process.GetProcesses()) {{ try {{ RCB.EmptyWorkingSet(p.Handle); }} catch {{}} }} }} }}
+'@
+[RCB]::Clean() | Out-Null"#,
+        pids = pids_str
+    );
+    run_ps(&script);
+
+    AutoBoostResult { game_detected: true, game_name, processes_boosted: game_procs.len() as u32 }
+}
+
+#[tauri::command]
+fn boost_game_processes(install_path: String) -> u32 {
+    let safe = install_path.to_lowercase().replace('\'', "''");
+    let script = format!(
+        r#"$c=0; Get-Process -EA SilentlyContinue | ForEach-Object {{ try {{ $e=$_.MainModule.FileName; if($e -and $e.ToLower().StartsWith('{safe}')){{ $_.PriorityClass='High'; $c++ }} }} catch {{}} }}; $c"#
+    );
+    ps_out(&script).trim().parse::<u32>().unwrap_or(0)
+}
+
+// ─── CleanDisk (Nettoyage Windows) ───────────────────────────
+
+#[tauri::command]
+fn run_cleandisk() -> bool {
+    run_ps(r#"Start-Process cleanmgr.exe -ArgumentList '/sagerun:1' -Wait -EA SilentlyContinue; $true"#)
 }
 
 /// Fonction partagée : calcule les SystemStats depuis un System déjà verrouillé
@@ -1278,6 +1430,11 @@ pub fn run() {
             open_overlay,
             is_admin,
             relaunch_as_admin,
+            get_virtual_memory_info,
+            set_virtual_memory,
+            auto_boost_session,
+            boost_game_processes,
+            run_cleandisk,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Crown, CheckCircle, Bell, Monitor as MonitorIcon, Power, RefreshCw, AlertTriangle, CheckCircle as Check, XCircle, Copy, LogOut, Zap, Calendar, RotateCcw } from "lucide-react";
+import { Crown, CheckCircle, Bell, Monitor as MonitorIcon, Power, RefreshCw, AlertTriangle, CheckCircle as Check, XCircle, Copy, LogOut, Zap, Calendar, RotateCcw, HardDrive } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -71,6 +71,9 @@ export default function SystemTab({
   const [loading,  setLoading]  = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
 
+  const [vmInfo,     setVmInfo]     = useState<{ ram_total_gb: number; is_auto: boolean; min_mb: number; max_mb: number } | null>(null);
+  const [vmLoading,  setVmLoading]  = useState(false);
+  const [vmResult,   setVmResult]   = useState<string | null>(null);
   const [keyInput,   setKeyInput]   = useState("");
   const [keyLoading, setKeyLoading] = useState(false);
   const [keyError,   setKeyError]   = useState("");
@@ -90,6 +93,23 @@ export default function SystemTab({
     setThresholds(updated);
     localStorage.setItem("nexboost_thresholds", JSON.stringify(updated));
   }, [thresholds]);
+
+  const loadVmInfo = async () => {
+    try {
+      const info = await invoke<{ ram_total_gb: number; is_auto: boolean; min_mb: number; max_mb: number }>("get_virtual_memory_info");
+      setVmInfo(info);
+    } catch {}
+  };
+
+  const handleSetVm = async (optimize: boolean) => {
+    setVmLoading(true); setVmResult(null);
+    try {
+      const ok = await invoke<boolean>("set_virtual_memory", { optimize });
+      setVmResult(ok ? (optimize ? "Optimisé — redémarrage requis" : "Restauré — redémarrage requis") : "Erreur");
+      await loadVmInfo();
+    } catch { setVmResult("Erreur"); }
+    finally { setVmLoading(false); setTimeout(() => setVmResult(null), 4000); }
+  };
 
   const loadPrograms = async () => {
     setLoading(true);
@@ -145,6 +165,8 @@ export default function SystemTab({
       setTimeout(() => setCopied(false), 2500);
     }).catch(() => {});
   };
+
+  useEffect(() => { loadVmInfo(); }, []);
 
   const enabled = programs.filter(p => p.enabled);
 
@@ -463,6 +485,81 @@ export default function SystemTab({
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* ── Mémoire Virtuelle ── */}
+              <div style={{ background: "#0c0c1a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "16px 18px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
+                  <HardDrive size={12} style={{ color: "#fbbf24" }} />
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#374151" }}>MÉMOIRE VIRTUELLE</span>
+                </div>
+                {vmInfo && (
+                  <div style={{ marginBottom: 14, padding: "10px 14px", borderRadius: 9, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      <div>
+                        <span style={{ fontSize: 10, color: "#4b5563" }}>Mode : </span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: vmInfo.is_auto ? "#38bdf8" : "#4ade80" }}>
+                          {vmInfo.is_auto ? "Géré par Windows" : "Taille fixe"}
+                        </span>
+                      </div>
+                      {!vmInfo.is_auto && vmInfo.max_mb > 0 && (
+                        <div>
+                          <span style={{ fontSize: 10, color: "#4b5563" }}>Taille : </span>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: "#f1f5f9", fontFamily: "monospace" }}>
+                            {vmInfo.min_mb} – {vmInfo.max_mb} MB
+                          </span>
+                        </div>
+                      )}
+                      <div>
+                        <span style={{ fontSize: 10, color: "#4b5563" }}>RAM : </span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "#f1f5f9", fontFamily: "monospace" }}>
+                          {vmInfo.ram_total_gb.toFixed(1)} GB
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {vmResult && (
+                  <div style={{ padding: "8px 12px", borderRadius: 7, marginBottom: 12, background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)", fontSize: 11, color: "#4ade80" }} className="animate-fadeIn">
+                    {vmResult}
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => handleSetVm(true)}
+                    disabled={vmLoading}
+                    style={{
+                      flex: 1, padding: "8px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                      background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.25)", color: "#fbbf24",
+                      cursor: vmLoading ? "not-allowed" : "pointer", opacity: vmLoading ? 0.6 : 1,
+                      transition: "all 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}
+                    onMouseEnter={e => { if (!vmLoading) e.currentTarget.style.background = "rgba(251,191,36,0.2)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(251,191,36,0.1)"; }}
+                  >
+                    {vmLoading
+                      ? <div className="animate-spin" style={{ width: 12, height: 12, borderRadius: "50%", border: "2px solid rgba(251,191,36,0.2)", borderTopColor: "#fbbf24" }} />
+                      : <Zap size={11} />}
+                    Optimiser (×1.5/×3 RAM)
+                  </button>
+                  <button
+                    onClick={() => handleSetVm(false)}
+                    disabled={vmLoading}
+                    style={{
+                      padding: "8px 12px", borderRadius: 8, fontSize: 11, fontWeight: 600,
+                      background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#4b5563",
+                      cursor: vmLoading ? "not-allowed" : "pointer", opacity: vmLoading ? 0.6 : 1, transition: "all 0.15s",
+                    }}
+                    onMouseEnter={e => { if (!vmLoading) { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.15)"; }}}
+                    onMouseLeave={e => { e.currentTarget.style.color = "#4b5563"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+                  >
+                    Restaurer auto
+                  </button>
+                </div>
+                <p style={{ fontSize: 10, color: "#374151", marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>
+                  L'optimisation fixe la taille à 1.5× – 3× la RAM totale. Évite les allocations dynamiques en cours de jeu.
+                  Un redémarrage est nécessaire.
+                </p>
               </div>
 
               {/* ── Overlay gaming ── */}
