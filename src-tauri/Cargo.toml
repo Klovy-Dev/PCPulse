@@ -1,6 +1,6 @@
 [package]
 name = "nexboost"
-version = "0.1.6"
+version = "0.2.0"
 description = "NexBoost — FPS & PC Optimizer"
 authors = ["Klovy"]
 edition = "2021"
